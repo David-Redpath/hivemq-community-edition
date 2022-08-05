@@ -66,7 +66,7 @@ public class RetainedMessageRocksDBLocalPersistence_4_4 extends RocksDBLocalPers
                 InternalConfigurations.PERSISTENCE_BUCKET_COUNT.get(),
                 InternalConfigurations.RETAINED_MESSAGE_MEMTABLE_SIZE_PORTION,
                 InternalConfigurations.RETAINED_MESSAGE_BLOCK_CACHE_SIZE_PORTION,
-                InternalConfigurations.RETAINED_MESSAGE_BLOCK_SIZE,
+                InternalConfigurations.RETAINED_MESSAGE_BLOCK_SIZE_BYTES,
                 false);
 
         this.payloadPersistence = payloadPersistence;
@@ -83,14 +83,6 @@ public class RetainedMessageRocksDBLocalPersistence_4_4 extends RocksDBLocalPers
     @Override
     protected String getVersion() {
         return PERSISTENCE_VERSION;
-    }
-
-    @NotNull
-    @Override
-    protected Options getOptions() {
-        return new Options()
-                .setCreateIfMissing(true)
-                .setStatistics(new Statistics());
     }
 
     @NotNull

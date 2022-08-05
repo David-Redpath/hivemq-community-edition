@@ -13,49 +13,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hivemq.extensions.loader;
 
 import com.google.common.collect.ImmutableMap;
+import com.hivemq.extension.sdk.api.annotations.NotNull;
 import com.hivemq.extension.sdk.api.services.builder.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 import java.util.function.Supplier;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
 
 /**
- * @author Florian Limpöck
  * @since 4.0.0
  */
-@SuppressWarnings("NullabilityAnnotations")
 public class ExtensionBuilderDependenciesImplTest {
 
-    private ExtensionBuilderDependenciesImpl pluginBuilderDependencies;
+    private final @NotNull RetainedPublishBuilder retainedPublishBuilder = mock(RetainedPublishBuilder.class);
+    private final @NotNull TopicSubscriptionBuilder topicSubscriptionBuilder = mock(TopicSubscriptionBuilder.class);
+    private final @NotNull TopicPermissionBuilder topicPermissionBuilderProvider = mock(TopicPermissionBuilder.class);
+    private final @NotNull PublishBuilder publishBuilder = mock(PublishBuilder.class);
+    private final @NotNull WillPublishBuilder willPublishBuilder = mock(WillPublishBuilder.class);
 
-    @Mock
-    private RetainedPublishBuilder retainedPublishBuilder;
-
-    @Mock
-    private TopicSubscriptionBuilder topicSubscriptionBuilder;
-
-    @Mock
-    private TopicPermissionBuilder topicPermissionBuilderProvider;
-
-
-    @Mock
-    private PublishBuilder publishBuilder;
-
-    @Mock
-    private WillPublishBuilder willPublishBuilder;
+    private @NotNull ExtensionBuilderDependenciesImpl extensionBuilderDependencies;
 
     @Before
     public void before() {
-        MockitoAnnotations.initMocks(this);
-        pluginBuilderDependencies = new ExtensionBuilderDependenciesImpl(() -> retainedPublishBuilder,
+        extensionBuilderDependencies = new ExtensionBuilderDependenciesImpl(
+                () -> retainedPublishBuilder,
                 () -> topicSubscriptionBuilder,
                 () -> topicPermissionBuilderProvider,
                 () -> publishBuilder,
@@ -64,8 +53,8 @@ public class ExtensionBuilderDependenciesImplTest {
 
     @Test
     public void test_map_contains_retained_message_builder() {
-
-        final ImmutableMap<String, Supplier<Object>> dependenciesMap = pluginBuilderDependencies.getDependenciesMap();
+        final ImmutableMap<String, Supplier<Object>> dependenciesMap =
+                extensionBuilderDependencies.getDependenciesMap();
 
         final Supplier<Object> o = dependenciesMap.get(RetainedPublishBuilder.class.getCanonicalName());
 
@@ -75,8 +64,8 @@ public class ExtensionBuilderDependenciesImplTest {
 
     @Test
     public void test_map_contains_subscription_builder() {
-
-        final ImmutableMap<String, Supplier<Object>> dependenciesMap = pluginBuilderDependencies.getDependenciesMap();
+        final ImmutableMap<String, Supplier<Object>> dependenciesMap =
+                extensionBuilderDependencies.getDependenciesMap();
 
         final Supplier<Object> o = dependenciesMap.get(TopicSubscriptionBuilder.class.getCanonicalName());
 
@@ -86,8 +75,8 @@ public class ExtensionBuilderDependenciesImplTest {
 
     @Test
     public void test_map_contains_topic_permission_builder() {
-
-        final ImmutableMap<String, Supplier<Object>> dependenciesMap = pluginBuilderDependencies.getDependenciesMap();
+        final ImmutableMap<String, Supplier<Object>> dependenciesMap =
+                extensionBuilderDependencies.getDependenciesMap();
 
         final Supplier<Object> o = dependenciesMap.get(TopicPermissionBuilder.class.getCanonicalName());
 
@@ -97,8 +86,8 @@ public class ExtensionBuilderDependenciesImplTest {
 
     @Test
     public void test_map_contains_publish_builder() {
-
-        final ImmutableMap<String, Supplier<Object>> dependenciesMap = pluginBuilderDependencies.getDependenciesMap();
+        final ImmutableMap<String, Supplier<Object>> dependenciesMap =
+                extensionBuilderDependencies.getDependenciesMap();
 
         final Supplier<Object> o = dependenciesMap.get(PublishBuilder.class.getCanonicalName());
 
@@ -108,13 +97,12 @@ public class ExtensionBuilderDependenciesImplTest {
 
     @Test
     public void test_map_contains_will_publish_builder() {
-
-        final ImmutableMap<String, Supplier<Object>> dependenciesMap = pluginBuilderDependencies.getDependenciesMap();
+        final ImmutableMap<String, Supplier<Object>> dependenciesMap =
+                extensionBuilderDependencies.getDependenciesMap();
 
         final Supplier<Object> o = dependenciesMap.get(WillPublishBuilder.class.getCanonicalName());
 
         assertNotNull(o);
         assertTrue(o.get() instanceof WillPublishBuilder);
     }
-
 }

@@ -57,7 +57,7 @@ public class PublishPayloadRocksDBLocalPersistence_4_4 extends RocksDBLocalPersi
                 InternalConfigurations.PAYLOAD_PERSISTENCE_BUCKET_COUNT.get(),
                 InternalConfigurations.PAYLOAD_PERSISTENCE_MEMTABLE_SIZE_PORTION.get(),
                 InternalConfigurations.PAYLOAD_PERSISTENCE_BLOCK_CACHE_SIZE_PORTION.get(),
-                InternalConfigurations.PAYLOAD_PERSISTENCE_BLOCK_SIZE,
+                InternalConfigurations.PAYLOAD_PERSISTENCE_BLOCK_SIZE_BYTES,
                 false);
     }
 
@@ -74,13 +74,6 @@ public class PublishPayloadRocksDBLocalPersistence_4_4 extends RocksDBLocalPersi
     @NotNull
     protected Logger getLogger() {
         return log;
-    }
-
-    @Override
-    protected @NotNull Options getOptions() {
-        return new Options()
-                .setCreateIfMissing(true)
-                .setStatistics(new Statistics());
     }
 
     @PostConstruct

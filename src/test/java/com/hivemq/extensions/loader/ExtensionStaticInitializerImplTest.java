@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.hivemq.extensions.loader;
 
 import com.codahale.metrics.MetricRegistry;
@@ -55,102 +56,89 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
 import util.TestConfigurationBootstrap;
 
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.function.Supplier;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("NullabilityAnnotations")
 public class ExtensionStaticInitializerImplTest {
 
     @Rule
-    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public final @NotNull TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    private ExtensionStaticInitializerImpl staticInitializer;
-    private MetricRegistry metricRegistry;
-    private InitializerRegistry initializerRegistry;
-    private ExtensionServicesDependenciesImpl servicesDependencies;
-    private ExtensionBuilderDependenciesImpl builderDependencies;
-    private SecurityRegistryImpl securityRegistry;
+    private final @NotNull RetainedMessageStore retainedMessageStore = mock(RetainedMessageStore.class);
+    private final @NotNull SubscriptionStore subscriptionStore = mock(SubscriptionStore.class);
+    private final @NotNull ClientService clientService = mock(ClientService.class);
+    private final @NotNull HiveMQExtensions hiveMQExtensions = mock(HiveMQExtensions.class);
+    private final @NotNull GlobalManagedExtensionExecutorService globalManagedExtensionExecutorService =
+            mock(GlobalManagedExtensionExecutorService.class);
+    private final @NotNull PublishService publishService = mock(PublishService.class);
+    private final @NotNull EventRegistry eventRegistry = mock(EventRegistry.class);
+    private final @NotNull ClusterService clusterService = mock(ClusterService.class);
+    private final @NotNull GlobalInterceptorRegistry interceptorRegistry = mock(GlobalInterceptorRegistry.class);
+    private final @NotNull AdminService adminService = mock(AdminService.class);
 
-    private RetainedPublishBuilderImpl retainedPublishBuilder;
-    private TopicSubscriptionBuilder topicSubscriptionBuilder;
-    private TopicPermissionBuilder topicPermissionBuilder;
-    private PublishBuilder publishBuilder;
-    private WillPublishBuilder willPublishBuilder;
+    private @NotNull ExtensionStaticInitializerImpl staticInitializer;
+    private @NotNull MetricRegistry metricRegistry;
+    private @NotNull InitializerRegistry initializerRegistry;
+    private @NotNull ExtensionServicesDependenciesImpl servicesDependencies;
+    private @NotNull ExtensionBuilderDependenciesImpl builderDependencies;
+    private @NotNull SecurityRegistryImpl securityRegistry;
 
-    private FullConfigurationService fullConfigurationService;
-
-    @Mock
-    private RetainedMessageStore retainedMessageStore;
-
-    @Mock
-    private SubscriptionStore subscriptionStore;
-
-    @Mock
-    private ClientService clientService;
-
-    @Mock
-    private HiveMQExtensions hiveMQExtensions;
-
-    @Mock
-    private GlobalManagedExtensionExecutorService managedPluginExecutorService;
-
-    @Mock
-    private PublishService publishService;
-
-    @Mock
-    private EventRegistry eventRegistry;
-
-    @Mock
-    private ClusterService clusterService;
-
-    @Mock
-    private GlobalInterceptorRegistry interceptorRegistry;
-
-    @Mock
-    private AdminService adminService;
+    private @NotNull RetainedPublishBuilderImpl retainedPublishBuilder;
+    private @NotNull TopicSubscriptionBuilder topicSubscriptionBuilder;
+    private @NotNull TopicPermissionBuilder topicPermissionBuilder;
+    private @NotNull PublishBuilder publishBuilder;
+    private @NotNull WillPublishBuilder willPublishBuilder;
 
     @Before
     public void before() {
-        MockitoAnnotations.initMocks(this);
+        final FullConfigurationService fullConfigurationService =
+                new TestConfigurationBootstrap().getFullConfigurationService();
         metricRegistry = new MetricRegistry();
-        fullConfigurationService = new TestConfigurationBootstrap().getFullConfigurationService();
-        initializerRegistry =
-                new InitializerRegistryImpl(new InitializersImpl(hiveMQExtensions));
+        initializerRegistry = new InitializerRegistryImpl(new InitializersImpl(hiveMQExtensions));
         retainedPublishBuilder = new RetainedPublishBuilderImpl(fullConfigurationService);
         topicSubscriptionBuilder = new TopicSubscriptionBuilderImpl(fullConfigurationService);
         topicPermissionBuilder = new TopicPermissionBuilderImpl(fullConfigurationService);
         publishBuilder = new PublishBuilderImpl(fullConfigurationService);
         willPublishBuilder = new WillPublishBuilderImpl(fullConfigurationService);
         securityRegistry = new SecurityRegistryImpl(new AuthenticatorsImpl(hiveMQExtensions),
-                new AuthorizersImpl(hiveMQExtensions), hiveMQExtensions);
-        servicesDependencies = Mockito.spy(
-                new ExtensionServicesDependenciesImpl(metricRegistry, initializerRegistry, retainedMessageStore,
-                        clientService, subscriptionStore, managedPluginExecutorService, publishService,
-                        hiveMQExtensions, securityRegistry, eventRegistry, clusterService, interceptorRegistry,
-                        adminService));
-        builderDependencies = Mockito.spy(
-                new ExtensionBuilderDependenciesImpl(() -> retainedPublishBuilder, () -> topicSubscriptionBuilder, () -> topicPermissionBuilder, () -> publishBuilder, () -> willPublishBuilder));
+                new AuthorizersImpl(hiveMQExtensions),
+                hiveMQExtensions);
+        servicesDependencies = Mockito.spy(new ExtensionServicesDependenciesImpl(metricRegistry,
+                initializerRegistry,
+                retainedMessageStore,
+                clientService,
+                subscriptionStore,
+                globalManagedExtensionExecutorService,
+                publishService,
+                hiveMQExtensions,
+                securityRegistry,
+                eventRegistry,
+                clusterService,
+                interceptorRegistry,
+                adminService));
+        builderDependencies = Mockito.spy(new ExtensionBuilderDependenciesImpl(() -> retainedPublishBuilder,
+                () -> topicSubscriptionBuilder,
+                () -> topicPermissionBuilder,
+                () -> publishBuilder,
+                () -> willPublishBuilder));
         staticInitializer = new ExtensionStaticInitializerImpl(servicesDependencies, builderDependencies);
     }
 
     @Test
     public void test_services_contains_metric_registry() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String metricRegistryKey = MetricRegistry.class.getCanonicalName();
         assertTrue(map.containsKey(metricRegistryKey));
@@ -161,10 +149,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_initializer_registry() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String initializerRegistryKey = InitializerRegistry.class.getCanonicalName();
         assertTrue(map.containsKey(initializerRegistryKey));
@@ -175,10 +162,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_retained_message_store() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String retainedMessageStoreKey = RetainedMessageStore.class.getCanonicalName();
         assertTrue(map.containsKey(retainedMessageStoreKey));
@@ -189,10 +175,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_subscription_store() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String subscriptionStoreKey = SubscriptionStore.class.getCanonicalName();
         assertTrue(map.containsKey(subscriptionStoreKey));
@@ -202,11 +187,10 @@ public class ExtensionStaticInitializerImplTest {
     }
 
     @Test
-    public void test_services_contains_plugin_executor_service() throws Exception {
+    public void test_services_contains_extension_executor_service() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String executorKey = ManagedExtensionExecutorService.class.getCanonicalName();
         assertTrue(map.containsKey(executorKey));
@@ -216,13 +200,12 @@ public class ExtensionStaticInitializerImplTest {
     }
 
     @Test
-    public void test_plugins_get_exclusive_executor_service_wrapper() throws Exception {
+    public void test_extensions_get_exclusive_executor_service_wrapper() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass1 = createAndLoadExtension();
+        final Class<? extends ExtensionMain> extensionMainClass2 = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass1 = createAndLoadPlugin();
-        final Class<? extends ExtensionMain> pluginMainClass2 = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map1 = getServicesMap(pluginMainClass1);
-        final ImmutableMap<String, Object> map2 = getServicesMap(pluginMainClass2);
+        final ImmutableMap<String, Object> map1 = getServicesMap(extensionMainClass1);
+        final ImmutableMap<String, Object> map2 = getServicesMap(extensionMainClass2);
 
         final String executorKey = ManagedExtensionExecutorService.class.getCanonicalName();
         assertTrue(map1.containsKey(executorKey));
@@ -240,10 +223,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_client_service() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String clientServiceKey = ClientService.class.getCanonicalName();
         assertTrue(map.containsKey(clientServiceKey));
@@ -254,10 +236,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_cluster_service() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String clientServiceKey = ClusterService.class.getCanonicalName();
         assertTrue(map.containsKey(clientServiceKey));
@@ -268,52 +249,51 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_builders_contains_retained_publish_builder() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(pluginMainClass);
+        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(extensionMainClass);
 
         final String publishBuilderKey = RetainedPublishBuilder.class.getCanonicalName();
         assertTrue(map.containsKey(publishBuilderKey));
 
         final Supplier<Object> objectFromMap = map.get(publishBuilderKey);
+        assertNotNull(objectFromMap);
         assertSame(retainedPublishBuilder, objectFromMap.get());
     }
 
     @Test
     public void test_builders_contains_publish_builder() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(pluginMainClass);
+        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(extensionMainClass);
 
         final String publishBuilderKey = PublishBuilder.class.getCanonicalName();
         assertTrue(map.containsKey(publishBuilderKey));
 
         final Supplier<Object> objectFromMap = map.get(publishBuilderKey);
+        assertNotNull(objectFromMap);
         assertSame(publishBuilder, objectFromMap.get());
     }
 
     @Test
     public void test_builders_contains_will_publish_builder() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(pluginMainClass);
+        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(extensionMainClass);
 
         final String publishBuilderKey = WillPublishBuilder.class.getCanonicalName();
         assertTrue(map.containsKey(publishBuilderKey));
 
         final Supplier<Object> objectFromMap = map.get(publishBuilderKey);
+        assertNotNull(objectFromMap);
         assertSame(willPublishBuilder, objectFromMap.get());
     }
 
     @Test
     public void test_services_contains_publish_service() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String publishServiceKey = PublishService.class.getCanonicalName();
         assertTrue(map.containsKey(publishServiceKey));
@@ -324,10 +304,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_security_registry() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String securityRegistryKey = SecurityRegistry.class.getCanonicalName();
         assertTrue(map.containsKey(securityRegistryKey));
@@ -338,10 +317,9 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_services_contains_event_registry() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Object> map = getServicesMap(pluginMainClass);
+        final ImmutableMap<String, Object> map = getServicesMap(extensionMainClass);
 
         final String eventRegistryKey = EventRegistry.class.getCanonicalName();
         assertTrue(map.containsKey(eventRegistryKey));
@@ -352,37 +330,36 @@ public class ExtensionStaticInitializerImplTest {
 
     @Test
     public void test_builders_contains_topic_subscription_builder() throws Exception {
+        final Class<? extends ExtensionMain> extensionMainClass = createAndLoadExtension();
 
-        final Class<? extends ExtensionMain> pluginMainClass = createAndLoadPlugin();
-
-        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(pluginMainClass);
+        final ImmutableMap<String, Supplier<Object>> map = getBuildersMap(extensionMainClass);
 
         final String topicBuilderKey = TopicSubscriptionBuilder.class.getCanonicalName();
         assertTrue(map.containsKey(topicBuilderKey));
 
         final Supplier<Object> objectFromMap = map.get(topicBuilderKey);
+        assertNotNull(objectFromMap);
         assertSame(topicSubscriptionBuilder, objectFromMap.get());
     }
 
     @Test(expected = ExtensionLoadingException.class)
     public void test_exception_at_static_initialization() throws Exception {
-        when(servicesDependencies.getDependenciesMap(any(IsolatedExtensionClassloader.class))).thenThrow(
-                new RuntimeException("Test-Exception"));
-        createAndLoadPlugin();
+        when(servicesDependencies.getDependenciesMap(any(IsolatedExtensionClassloader.class))).thenThrow(new RuntimeException(
+                "Test-Exception"));
+        createAndLoadExtension();
     }
 
     @Test(expected = ExtensionLoadingException.class)
     public void test_exception_at_static_builders_initialization() throws Exception {
-        when(builderDependencies.getDependenciesMap()).thenThrow(
-                new RuntimeException("Test-Exception"));
-        createAndLoadPlugin();
+        when(builderDependencies.getDependenciesMap()).thenThrow(new RuntimeException("Test-Exception"));
+        createAndLoadExtension();
     }
 
     @NotNull
-    private ImmutableMap<String, Object> getServicesMap(final Class<? extends ExtensionMain> pluginMainClass)
+    private ImmutableMap<String, Object> getServicesMap(final Class<? extends ExtensionMain> extensionMainClass)
             throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
         final Class<?> servicesClass =
-                pluginMainClass.getClassLoader().loadClass("com.hivemq.extension.sdk.api.services.Services");
+                extensionMainClass.getClassLoader().loadClass("com.hivemq.extension.sdk.api.services.Services");
         final Field servicesField = servicesClass.getDeclaredField("services");
 
         servicesField.setAccessible(true);
@@ -396,10 +373,10 @@ public class ExtensionStaticInitializerImplTest {
     }
 
     @NotNull
-    private ImmutableMap<String, Supplier<Object>> getBuildersMap(final Class<? extends ExtensionMain> pluginMainClass)
+    private ImmutableMap<String, Supplier<Object>> getBuildersMap(final Class<? extends ExtensionMain> extensionMainClass)
             throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
         final Class<?> buildersClass =
-                pluginMainClass.getClassLoader().loadClass("com.hivemq.extension.sdk.api.services.builder.Builders");
+                extensionMainClass.getClassLoader().loadClass("com.hivemq.extension.sdk.api.services.builder.Builders");
         final Field buildersField = buildersClass.getDeclaredField("builders");
 
         buildersField.setAccessible(true);
@@ -412,23 +389,20 @@ public class ExtensionStaticInitializerImplTest {
         return (ImmutableMap<String, Supplier<Object>>) o;
     }
 
-    private Class<? extends ExtensionMain> createAndLoadPlugin()
-            throws IOException, ClassNotFoundException, ExtensionLoadingException {
+    private @NotNull Class<? extends ExtensionMain> createAndLoadExtension() throws Exception {
         final JavaArchive javaArchive = ShrinkWrap.create(JavaArchive.class)
                 .addAsServiceProviderAndClasses(ExtensionMain.class, TestExtensionMain.class);
 
         final File jarFile = temporaryFolder.newFile();
         javaArchive.as(ZipExporter.class).exportTo(jarFile, true);
 
-
-        final ClassServiceLoader classServiceLoader = new ClassServiceLoader();
-
-        //This classloader contains the classes from the jar file
+        // this classloader contains the classes from the JAR file
         final IsolatedExtensionClassloader cl =
                 new IsolatedExtensionClassloader(new URL[]{jarFile.toURI().toURL()}, getClass().getClassLoader());
         cl.loadClassesWithStaticContext();
-        staticInitializer.initialize("pluginid", cl);
+        staticInitializer.initialize("extensionid", cl);
 
+        final ClassServiceLoader classServiceLoader = new ClassServiceLoader();
         final Iterable<? extends Class<?>> loadedClasses =
                 classServiceLoader.load(Class.forName("com.hivemq.extension.sdk.api.ExtensionMain", true, cl), cl);
 
@@ -436,10 +410,9 @@ public class ExtensionStaticInitializerImplTest {
         return (Class<? extends ExtensionMain>) loadedClasses.iterator().next();
     }
 
-
     public static class TestExtensionMain implements ExtensionMain {
 
-        //check if Services and Builders can also be used in a static block
+        // check if Services and Builders can also be used in a static block
         static {
             System.out.println(Services.metricRegistry());
             System.out.println(Services.initializerRegistry());
@@ -454,12 +427,13 @@ public class ExtensionStaticInitializerImplTest {
         }
 
         @Override
-        public void extensionStart(final @NotNull ExtensionStartInput input, final @NotNull ExtensionStartOutput output) {
+        public void extensionStart(
+                final @NotNull ExtensionStartInput input,
+                final @NotNull ExtensionStartOutput output) {
         }
 
         @Override
         public void extensionStop(final @NotNull ExtensionStopInput input, final @NotNull ExtensionStopOutput output) {
         }
     }
-
 }

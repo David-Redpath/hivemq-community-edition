@@ -44,22 +44,24 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.hivemq.configuration.service.PersistenceConfigurationService.PersistenceMode;
 
-/**
- * @author Dominik Obermaier
- * @author Florian Limpöck
- */
 public class HiveMQServer {
 
     private static final Logger log = LoggerFactory.getLogger(HiveMQServer.class);
 
     private final @NotNull HivemqId hivemqId;
     private final @NotNull LifecycleModule lifecycleModule;
+    private final @NotNull DataLock dataLock;
     private final @NotNull SystemInformation systemInformation;
     private final @NotNull MetricRegistry metricRegistry;
     private final boolean migrate;
@@ -83,6 +85,7 @@ public class HiveMQServer {
             final boolean migrate) {
         hivemqId = new HivemqId();
         lifecycleModule = new LifecycleModule();
+        dataLock = new DataLock();
         this.systemInformation = systemInformation;
         this.metricRegistry = metricRegistry;
         this.configService = configService;
@@ -93,8 +96,8 @@ public class HiveMQServer {
         final HiveMQServer server = new HiveMQServer();
         try {
             server.start();
-        } catch (final StartAbortedException ignored) {
-            // This exception is ignored as we throw it ourselves when HiveMQ shutdown is initiated during the startup.
+        } catch (final StartAbortedException e) {
+            log.info("HiveMQ start was cancelled. {}", e.getMessage());
         }
     }
 
@@ -128,6 +131,11 @@ public class HiveMQServer {
             configService = ConfigurationBootstrap.bootstrapConfig(systemInformation);
         }
 
+        if (configService.persistenceConfigurationService().getMode() == PersistenceMode.FILE) {
+            log.trace("Locking data folder.");
+            dataLock.lock(systemInformation.getDataFolder().toPath());
+        }
+
         log.info("This HiveMQ ID is {}", hivemqId.get());
 
         //ungraceful shutdown does not delete tmp folders, so we clean them up on broker start
@@ -147,16 +155,16 @@ public class HiveMQServer {
         persistenceInjector.getInstance(PersistenceStartup.class).finish();
 
         if (persistenceInjector.getInstance(ShutdownHooks.class).isShuttingDown()) {
-            throw new StartAbortedException();
+            throw new StartAbortedException("User aborted.");
         }
 
         if (migrate && configService.persistenceConfigurationService().getMode() != PersistenceMode.IN_MEMORY) {
 
             if (migrations.size() + valueMigrations.size() > 0) {
-                if (migrations.size() > 0) {
-                    log.info("Persistence types has been changed, migrating persistent data.");
-                } else {
+                if (migrations.isEmpty()) {
                     log.info("Persistence values has been changed, migrating persistent data.");
+                } else {
+                    log.info("Persistence types has been changed, migrating persistent data.");
                 }
                 for (final MigrationUnit migrationUnit : migrations.keySet()) {
                     log.debug("{} needs to be migrated.", StringUtils.capitalize(migrationUnit.toString()));
@@ -187,12 +195,12 @@ public class HiveMQServer {
         }
         final ShutdownHooks shutdownHooks = injector.getInstance(ShutdownHooks.class);
         if (shutdownHooks.isShuttingDown()) {
-            throw new StartAbortedException();
+            throw new StartAbortedException("User aborted.");
         }
 
         final HiveMQInstance instance = injector.getInstance(HiveMQInstance.class);
 
-        if (InternalConfigurations.GC_AFTER_STARTUP) {
+        if (InternalConfigurations.GC_AFTER_STARTUP_ENABLED) {
             log.trace("Starting initial garbage collection after startup");
             final long start = System.currentTimeMillis();
             //Start garbage collection of objects we don't need anymore after starting up
@@ -201,7 +209,7 @@ public class HiveMQServer {
         }
 
         if (shutdownHooks.isShuttingDown()) {
-            throw new StartAbortedException();
+            throw new StartAbortedException("User aborted.");
         }
 
         /* It's important that we are modifying the log levels after Guice is initialized,
@@ -216,7 +224,7 @@ public class HiveMQServer {
         }
         final ShutdownHooks shutdownHooks = injector.getInstance(ShutdownHooks.class);
         if (shutdownHooks.isShuttingDown()) {
-            throw new StartAbortedException();
+            throw new StartAbortedException("User aborted.");
         }
 
         final UsageStatistics usageStatistics = injector.getInstance(UsageStatistics.class);
@@ -227,9 +235,7 @@ public class HiveMQServer {
 
         final long startTime = System.nanoTime();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            stop();
-        }, "shutdown-thread," + hivemqId.get()));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "shutdown-thread," + hivemqId.get()));
 
         bootstrap();
         startInstance(null);
@@ -250,9 +256,57 @@ public class HiveMQServer {
         }
 
         shutdownHooks.runShutdownHooks();
+
+        if (configService.persistenceConfigurationService().getMode() == PersistenceMode.FILE) {
+            dataLock.unlock();
+        }
     }
 
     public @Nullable Injector getInjector() {
         return injector;
+    }
+
+    /**
+     * Create a lock file in the data folder of HiveMQ and hold the lock until released in order to avoid a second
+     * HiveMQ instance starting with the same data folder.
+     */
+    private static final class DataLock {
+
+        private @Nullable FileChannel channel;
+        private @Nullable FileLock fileLock;
+
+        public void lock(final @NotNull Path dataPath) {
+            final Path lockFile = dataPath.resolve("data.lock");
+            try {
+                channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            } catch (final Throwable e) {
+                log.error("Could not open data lock file.", e);
+                throw new StartAbortedException("An error occurred while opening the persistence. Is another HiveMQ instance running?");
+            }
+            try {
+                fileLock = channel.tryLock();
+            } catch (final Throwable ignored) {
+            }
+            if (fileLock == null) {
+                throw new StartAbortedException("An error occurred while opening the persistence. Is another HiveMQ instance running?");
+            }
+        }
+
+        public void unlock() {
+            try {
+                if (fileLock != null && fileLock.isValid()) {
+                    fileLock.release();
+                }
+            } catch (final IOException e) {
+                log.error("An error occurred while releasing lock of data folder.");
+            }
+            try {
+                if (channel != null) {
+                    channel.close();
+                }
+            } catch (final IOException e) {
+                log.error("An error occurred while closing lock file in data folder.");
+            }
+        }
     }
 }
